@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Social Housing - Ireland Only</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.3/dist/leaflet.css" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster/dist/MarkerCluster.css" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster/dist/MarkerCluster.Default.css" />
+  <style>
+    body {
+      font-family: 'Segoe UI', sans-serif;
+      background-color: #eef8ef;
+      margin: 0;
+      padding: 40px;
+      display: flex;
+      justify-content: center;
+    }
+    #map-container {
+      width: 800px;
+      height: 600px;
+      position: relative;
+      border-radius: 12px;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+    }
+    #map {
+      width: 100%;
+      height: 100%;
+      border-radius: 12px;
+    }
+    .controls {
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      background: #d3ead6;
+      padding: 10px;
+      border-radius: 8px;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+      z-index: 1000;
+    }
+    .controls label, .controls select {
+      display: block;
+      font-size: 14px;
+      margin-bottom: 6px;
+      width: 200px;
+    }
+    .summary {
+      margin-top: 8px;
+      font-weight: bold;
+      font-size: 14px;
+    }
+    .legend {
+      position: absolute;
+      bottom: 10px;
+      right: 10px;
+      background: rgba(255,255,255,0.9);
+      padding: 8px;
+      font-size: 13px;
+      border-radius: 6px;
+    }
+    .legend span {
+      display: inline-block;
+      width: 12px;
+      height: 12px;
+      margin-right: 6px;
+      border-radius: 2px;
+    }
+  </style>
+</head>
+<body>
+<div id="map-container">
+  <div id="map"></div>
+  <div class="controls">
+    <label for="quarterSelect">Quarter</label>
+    <select id="quarterSelect"></select>
+    <label for="fundingSelect">Funding Source</label>
+    <select id="fundingSelect">
+      <option value="ALL">All Sources</option>
+      <option value="CALF">CALF</option>
+      <option value="CAS">CAS</option>
+      <option value="LEASING">LEASING</option>
+      <option value="SHIP">SHIP</option>
+    </select>
+    <div class="summary" id="summaryBox">Loading...</div>
+  </div>
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.3/dist/leaflet.js"></script>
+<script src="https://unpkg.com/leaflet.markercluster/dist/leaflet.markercluster.js"></script>
+<script>
+const map = L.map('map', {
+  maxBounds: [[51.2, -11.0], [55.5, -5.0]],
+  maxBoundsViscosity: 1.0,
+  minZoom: 6,
+  maxZoom: 12
+}).setView([53.3, -8], 7);
+
+L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
+  attribution: '&copy; <a href="https://carto.com/">CARTO</a>',
+  subdomains: 'abcd',
+  maxZoom: 19
+}).addTo(map);
+
+const colors = {
+  CALF: '#e41a1c',
+  CAS: '#377eb8',
+  LEASING: '#4daf4a',
+  SHIP: '#ff7f00'
+};
+
+const legend = L.control({position: 'bottomright'});
+legend.onAdd = function () {
+  const div = L.DomUtil.create('div', 'legend');
+  div.innerHTML = '<strong>Funding Source</strong><br>' +
+    Object.entries(colors).map(([k, v]) => `<span style="background:${v}"></span>${k}`).join('<br>');
+  return div;
+};
+legend.addTo(map);
+
+let markerCluster;
+let geoData;
+
+fetch('final_fixed_units.geojson')
+  .then(res => res.json())
+  .then(data => {
+    geoData = data;
+    const allQuarters = [...new Set(data.features.map(f => (f.properties.Quarter || '').trim()))];
+    const quarterSelect = document.getElementById('quarterSelect');
+    allQuarters.unshift('ALL');
+    allQuarters.forEach(q => {
+      const opt = document.createElement('option');
+      opt.value = q;
+      opt.textContent = q === 'ALL' ? 'All Quarters' : q;
+      quarterSelect.appendChild(opt);
+    });
+    document.getElementById('quarterSelect').addEventListener('change', render);
+    document.getElementById('fundingSelect').addEventListener('change', render);
+    render();
+  });
+
+function render() {
+  const quarter = document.getElementById('quarterSelect').value;
+  const selectedSource = document.getElementById('fundingSelect').value;
+  if (markerCluster) map.removeLayer(markerCluster);
+
+  markerCluster = L.markerClusterGroup({
+    iconCreateFunction: function (cluster) {
+      const markers = cluster.getAllChildMarkers();
+      const colorCounts = {};
+      markers.forEach(m => {
+        const color = m.options.icon?.options?.html?.match(/background:([^;]+)/)?.[1] || '#999';
+        colorCounts[color] = (colorCounts[color] || 0) + 1;
+      });
+      const dominantColor = Object.entries(colorCounts).sort((a, b) => b[1] - a[1])[0][0];
+      return L.divIcon({
+        html: `<div style="background:${dominantColor}; border-radius:50%; color:#fff; line-height:40px; width:40px; height:40px; text-align:center; font-weight:bold; border:2px solid #fff;">${cluster.getChildCount()}</div>`,
+        className: '',
+        iconSize: [40, 40]
+      });
+    }
+  });
+
+  const filtered = geoData.features.filter(f => {
+    const q = (f.properties.Quarter || '').trim();
+    const s = (f.properties.Funding_Source || '').trim().toUpperCase();
+    return (quarter === 'ALL' || q === quarter) && (selectedSource === 'ALL' || s === selectedSource);
+  });
+
+  document.getElementById('summaryBox').innerHTML = `<strong>${filtered.length}</strong> matching units`;
+
+  filtered.forEach(f => {
+    const props = f.properties;
+    const count = props.Count;
+    if (!count || isNaN(count)) return;  // Skip if count is missing or invalid
+
+    const latlng = [f.geometry.coordinates[1], f.geometry.coordinates[0]];
+    const source = (props.Funding_Source || '').trim().toUpperCase();
+    const color = colors[source] || '#999';
+
+    const marker = L.marker(latlng, {
+      icon: L.divIcon({
+        html: `<div style="background:${color}; border-radius:50%; color:#fff; line-height:30px; width:30px; height:30px; text-align:center; font-weight:bold; border:2px solid #fff;">${count}</div>`,
+        className: '',
+        iconSize: [30, 30]
+      })
+    });
+
+    const popup = `<b>${props.COUNTY}</b><br>📅 Quarter: ${props.Quarter}<br>💰 Source: ${props.Funding_Source}<br>🏡 Units: ${props.Count}`;
+    marker.bindPopup(popup);
+    markerCluster.addLayer(marker);
+  });
+
+  map.addLayer(markerCluster);
+}
+</script>
+</body>
+</html>
