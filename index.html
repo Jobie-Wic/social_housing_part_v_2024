@@ -152,25 +152,29 @@ function render() {
 
   markerCluster = L.markerClusterGroup({
     iconCreateFunction: function (cluster) {
-      const markers = cluster.getAllChildMarkers();
-      const colorCounts = {};
+  const markers = cluster.getAllChildMarkers();
+  const colorCounts = {};
 
-      markers.forEach(m => {
-        const color = m.options.fillColor || colors.TOTAL;
-        colorCounts[color] = (colorCounts[color] || 0) + 1;
-      });
+  markers.forEach(m => {
+    const color = m.options.fillColor || colors.TOTAL;
+    colorCounts[color] = (colorCounts[color] || 0) + 1;
+  });
 
-      let dominantColor = Object.entries(colorCounts).sort((a, b) => b[1] - a[1])[0][0];
+  let dominantColor = Object.entries(colorCounts).sort((a, b) => b[1] - a[1])[0][0];
 
-      if (quarter === 'ALL' && selectedSource === 'ALL') {
-        dominantColor = colors.TOTAL;
-      }
+  // Apply grey color ONLY if both filters are ALL
+  if (
+    document.getElementById('quarterSelect').value === 'ALL' &&
+    document.getElementById('fundingSelect').value === 'ALL'
+  ) {
+    dominantColor = colors.TOTAL;
+  }
 
-      return L.divIcon({
-        html: `<div style="background:${dominantColor}; border-radius:50%; color:#fff; width:30px; height:30px; line-height:30px; text-align:center; font-size:14px; font-weight:bold; border:2px solid #fff;">${cluster.getChildCount()}</div>`,
-        className: '',
-        iconSize: [30, 30]
-      });
+  return L.divIcon({
+    html: `<div style="background:${dominantColor}; border-radius:50%; color:#fff; width:30px; height:30px; line-height:30px; text-align:center; font-size:14px; font-weight:bold; border:2px solid #fff;">${cluster.getChildCount()}</div>`,
+    className: '',
+    iconSize: [30, 30]
+  });
     }
   });
 
@@ -182,31 +186,24 @@ function render() {
 
   document.getElementById('summaryBox').innerHTML = `<strong>${filtered.length}</strong> matching units`;
 
-  filtered.forEach(f => {
-    const props = f.properties;
-    const latlng = [f.geometry.coordinates[1], f.geometry.coordinates[0]];
-    const source = (props.Funding_Source || '').trim().toUpperCase();
-    const count = props.Count;
+ filtered.forEach(f => {
+  const props = f.properties;
+  const latlng = [f.geometry.coordinates[1], f.geometry.coordinates[0]];
+  const source = (props.Funding_Source || '').trim().toUpperCase();
+  const color = colors[source] || colors.TOTAL;
 
-    if (!count || isNaN(count)) return;
-
-    const color = colors[source] || '#999';
-
-    const marker = L.circleMarker(latlng, {
-      radius: 8,
-      fillColor: color,
-      color: '#333',
-      weight: 1,
-      fillOpacity: 0.9
-    });
-
-    const popup = `<b>${props.COUNTY}</b><br>📅 Quarter: ${props.Quarter}<br>💰 Source: ${props.Funding_Source}<br>🏡 Units: ${props.Count}`;
-    marker.bindPopup(popup);
-    markerCluster.addLayer(marker);
+  const marker = L.circleMarker(latlng, {
+    radius: 8,
+    fillColor: color,
+    color: '#333',
+    weight: 1,
+    fillOpacity: 0.9
   });
 
-  map.addLayer(markerCluster);
-}
+  const popup = `<b>${props.COUNTY}</b><br>📅 Quarter: ${props.Quarter}<br>💰 Source: ${props.Funding_Source}<br>🏡 Units: ${props.Count}`;
+  marker.bindPopup(popup);
+  markerCluster.addLayer(marker);
+});
 </script>
 </body>
 </html>
